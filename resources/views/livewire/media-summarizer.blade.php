@@ -11,7 +11,7 @@
 
         <div class="mt-12 bg-white shadow sm:rounded-lg">
             <div class="px-4 py-5 sm:p-6">
-                <form wire:submit.prevent="summarize">
+                <form wire:submit="summarize">
                     <div class="space-y-6">
                         <div>
                             <label for="youtubeUrl" class="block text-sm font-medium text-gray-700">
@@ -22,6 +22,7 @@
                                        class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
                                        placeholder="https://www.youtube.com/watch?v=...">
                             </div>
+                            @error('youtubeUrl') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
                         </div>
 
                         <div class="flex items-center">
@@ -51,29 +52,39 @@
                                     </p>
                                 </div>
                             </div>
+                            @error('file') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
                         </div>
 
                         <div>
-                            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                                Summarize
+                            <button type="submit" wire:loading.attr="disabled" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                <span wire:loading.remove>Summarize</span>
+                                <span wire:loading>Processing...</span>
                             </button>
                         </div>
                     </div>
                 </form>
+
+                @if ($error)
+                    <div class="mt-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                        <strong class="font-bold">Error!</strong>
+                        <span class="block sm:inline">{{ $error }}</span>
+                    </div>
+                @endif
             </div>
         </div>
 
-        @if ($isLoading)
+        <div wire:loading wire:target="summarize">
             <div class="mt-6 text-center">
                 <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-600"></div>
                 <p class="mt-2 text-indigo-600">Processing your media...</p>
             </div>
-        @endif
+        </div>
 
         @if ($summaryId)
             <div class="mt-6 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
                 <strong class="font-bold">Success!</strong>
-                <span class="block sm:inline"> Your media is being summarized. Summary ID: {{ $summaryId }}</span>
+                <span class="block sm:inline"> Your media is being summarized. </span>
+                <a href="{{ route('summary.display', ['summaryId' => $summaryId]) }}" class="underline">View Summary</a>
             </div>
         @endif
     </div>
