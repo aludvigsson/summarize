@@ -25,9 +25,9 @@ class ProcessMedia implements ShouldQueue
         $this->data = $data;
     }
 
-    public function handle(YouTubeService $youtubeService, AudioService $audioService, AISummarizerService $aiSummarizer)
+    public function handle(AISummarizerService $aiSummarizer)
     {
-        $text = $this->extractText($youtubeService, $audioService);
+        $text = $this->extractText();
         $summary = $aiSummarizer->summarize($text);
 
         Summary::create([
@@ -37,12 +37,12 @@ class ProcessMedia implements ShouldQueue
         ]);
     }
 
-    protected function extractText($youtubeService, $audioService): string
+    protected function extractText(): string
     {
         if (isset($this->data['youtube_url'])) {
-            return $youtubeService->getTranscript($this->data['youtube_url']);
+            return app(YouTubeService::class)->getTranscript($this->data['youtube_url']);
         } elseif (isset($this->data['file_path'])) {
-            return $audioService->audioToText($this->data['file_path']);
+            return app(AudioService::class)->audioToText($this->data['file_path']);
         }
 
         throw new \Exception('Unsupported media type');
