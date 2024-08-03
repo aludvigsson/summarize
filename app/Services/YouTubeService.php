@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Google_Client;
 use Google_Service_YouTube;
+use Google_Service_Exception;
 
 class YouTubeService
 {
@@ -21,20 +22,33 @@ class YouTubeService
     {
         $videoId = $this->extractVideoId($videoUrl);
 
-        // Fetch captions
-        $captions = $this->youtube->captions->listCaptions('snippet', $videoId);
+        if (empty($videoId)) {
+            throw new \Exception('Invalid YouTube URL');
+        }
 
-        // Assuming the first caption track is the one we want
-        $captionId = $captions->getItems()[0]->getId();
+        try {
+            // Fetch captions
+            $captions = $this->youtube->captions->listCaptions('snippet', $videoId);
 
-        // Download the caption track
-        $captionTrack = $this->youtube->captions->download($captionId);
+            // Check if captions are available
+            if (empty($captions->getItems())) {
+                throw new \Exception('No captions available for this video');
+            }
 
-        // Parse the caption track and convert to plain text
-        // This is a simplified example; you might need a more robust parser
-        $plainText = strip_tags($captionTrack);
+            // Get the first available caption track
+            $captionId = $captions->getItems()[0]->getId();
 
-        return $plainText;
+            // Download the caption track
+            $captionTrack = $this->youtube->captions->download($captionId);
+
+            // Parse the caption track and convert to plain text
+            $plainText = strip_tags($captionTrack);
+
+            return $plainText;
+        } catch (Google_Service_Exception $e) {
+            // Handle API errors (e.g., invalid API key, quota exceeded)
+            throw new \Exception('YouTube API error: ' . $e->getMessage());
+        }
     }
 
     protected function extractVideoId(string $url): string
