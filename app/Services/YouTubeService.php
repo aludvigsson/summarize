@@ -2,58 +2,107 @@
 
 namespace App\Services;
 
-use Google_Client;
-use Google_Service_YouTube;
-use Google_Service_Exception;
+use Exception;
+use GuzzleHttp\Client;
 
 class YouTubeService
 {
     protected $client;
-    protected $youtube;
+    protected $languageCode;
 
-    public function __construct()
+    public function __construct($languageCode = 'en')
     {
-        $this->client = new Google_Client();
-        $this->client->setDeveloperKey(config('services.youtube.api_key'));
-        $this->youtube = new Google_Service_YouTube($this->client);
+        $this->client = new Client([
+            'headers' => [
+                'accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+                'accept-language' => 'en-En,en;q=0.9',
+                'cache-control' => 'no-cache',
+                'pragma' => 'no-cache',
+                'sec-ch-ua' => '"Google Chrome";v="117", "Not;A=Brand";v="8", "Chromium";v="117"',
+                'sec-ch-ua-mobile' => '?0',
+                'sec-ch-ua-platform' => '"Windows"',
+                'sec-fetch-dest' => 'document',
+                'sec-fetch-mode' => 'navigate',
+                'sec-fetch-site' => 'none',
+                'sec-fetch-user' => '?1',
+                'upgrade-insecure-requests' => '1',
+                'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
+            ],
+            'timeout' => 20,
+            'allow_redirects' => [
+                'max' => 10,
+                'strict' => false,
+                'referer' => false,
+                'protocols' => ['http', 'https'],
+                'track_redirects' => false,
+            ],
+            'verify' => false,
+        ]);
+
+        $this->languageCode = $languageCode;
     }
 
     public function getTranscript(string $videoUrl): string
     {
-        $videoId = $this->extractVideoId($videoUrl);
-
-        if (empty($videoId)) {
-            throw new \Exception('Invalid YouTube URL');
+        $captionUrl = $this->getCaptionsBaseUrl($videoUrl);
+        if (empty($captionUrl)) {
+            throw new Exception('Captions not available for this video.');
         }
 
-        try {
-            // Fetch captions
-            $captions = $this->youtube->captions->listCaptions('snippet', $videoId);
-
-            // Check if captions are available
-            if (empty($captions->getItems())) {
-                throw new \Exception('No captions available for this video');
-            }
-
-            // Get the first available caption track
-            $captionId = $captions->getItems()[0]->getId();
-
-            // Download the caption track
-            $captionTrack = $this->youtube->captions->download($captionId);
-
-            // Parse the caption track and convert to plain text
-            $plainText = strip_tags($captionTrack);
-
-            return $plainText;
-        } catch (Google_Service_Exception $e) {
-            // Handle API errors (e.g., invalid API key, quota exceeded)
-            throw new \Exception('YouTube API error: ' . $e->getMessage());
-        }
+        $subtitles = $this->getSubtitles($captionUrl);
+        return implode(' ', $subtitles);
     }
 
-    protected function extractVideoId(string $url): string
+    protected function getCaptionsBaseUrl(string $videoUrl): ?string
     {
-        parse_str(parse_url($url, PHP_URL_QUERY), $params);
-        return $params['v'] ?? '';
+        $response = $this->client->get($videoUrl);
+
+        if ($response->getStatusCode() !== 200) {
+            throw new Exception("Failed to get captions: " . $response->getStatusCode());
+        }
+
+        $html = $response->getBody()->getContents();
+        preg_match('/"captionTracks":([^\]]*])/', $html, $matches);
+
+        if (empty($matches[1]) || strpos($matches[1], '"baseUrl":') === false) {
+            throw new Exception("Caption URL not found");
+        }
+
+        $results = json_decode($matches[1], true);
+        $result = array_filter($results, function ($result) {
+            return $result['languageCode'] == $this->languageCode;
+        });
+
+        if (empty($result)) {
+            throw new Exception("Caption URL not found for languageCode: {$this->languageCode}");
+        }
+
+        return $result[0]['baseUrl'] ?? null;
+    }
+
+    protected function getSubtitles(string $captionUrl): array
+    {
+        $response = $this->client->get($captionUrl);
+
+        if ($response->getStatusCode() !== 200) {
+            throw new Exception("Failed to get subtitles: " . $response->getStatusCode());
+        }
+
+        $subtitlesContent = $response->getBody()->getContents();
+        return $this->parseXmlTextNodes($subtitlesContent);
+    }
+
+    private function parseXmlTextNodes(string $xml): array
+    {
+        $result = [];
+        $xmlObject = simplexml_load_string($xml);
+        if ($xmlObject) {
+            $textNodes = $xmlObject->xpath('//text');
+            foreach ($textNodes as $textNode) {
+                $result[] = (string) $textNode;
+            }
+        }
+        return $result;
     }
 }
+?>

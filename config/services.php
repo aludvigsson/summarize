@@ -37,11 +37,14 @@ return [
 
     'youtube' => [
         'api_key' => env('YOUTUBE_API_KEY'),
+        'refresh_token' => env('YOUTUBE_REFRESH_TOKEN'),
+
     ],
 
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
     ],
+
 
 
 ];

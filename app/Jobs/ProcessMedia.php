@@ -11,6 +11,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 class ProcessMedia implements ShouldQueue
 {
@@ -27,14 +28,28 @@ class ProcessMedia implements ShouldQueue
 
     public function handle(AISummarizerService $aiSummarizer)
     {
-        $text = $this->extractText();
-        $summary = $aiSummarizer->summarize($text);
+        Log::info('ProcessMedia job started', ['id' => $this->id]);
 
-        Summary::create([
-            'id' => $this->id,
-            'summary' => $summary,
-            'original_content' => $this->data,
-        ]);
+        try {
+            $text = $this->extractText();
+            $summary = $aiSummarizer->summarize($text);
+
+            Summary::create([
+                'id' => $this->id,
+                'summary' => $summary,
+                'original_content' => $this->data,
+            ]);
+
+            Log::info('ProcessMedia job completed successfully', ['id' => $this->id]);
+        } catch (\Exception $e) {
+            Log::error('Error in ProcessMedia job', [
+                'id' => $this->id,
+                'error' => $e->getMessage()
+            ]);
+
+            // Optionally, you can rethrow the exception if you want the job to be retried
+            // throw $e;
+        }
     }
 
     protected function extractText(): string

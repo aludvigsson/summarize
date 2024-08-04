@@ -2,11 +2,12 @@
 
 namespace App\Services;
 
+
 use OpenAI;
 
 class AISummarizerService
 {
-    protected $client;
+    protected OpenAI\Client $client;
 
     public function __construct()
     {
