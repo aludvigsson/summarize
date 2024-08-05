@@ -31,12 +31,20 @@ class ProcessMedia implements ShouldQueue
         Log::info('ProcessMedia job started', ['id' => $this->id]);
 
         try {
-            $text = $this->extractText();
-            $summary = $aiSummarizer->summarize($text);
+            $segments = $this->extractText();
+            $summaries = [];
+
+            foreach ($segments as $segment) {
+                Log::info('Processing segment', ['time' => $segment['time']]);
+                $summaries[] = [
+                    'time' => $segment['time'],
+                    'summary' => $aiSummarizer->summarize($segment['text']),
+                ];
+            }
 
             Summary::create([
                 'id' => $this->id,
-                'summary' => $summary,
+                'summary' => json_encode($summaries),
                 'original_content' => $this->data,
             ]);
 
@@ -52,14 +60,105 @@ class ProcessMedia implements ShouldQueue
         }
     }
 
-    protected function extractText(): string
+    protected function extractText(): array
     {
         if (isset($this->data['youtube_url'])) {
-            return app(YouTubeService::class)->getTranscript($this->data['youtube_url']);
+            $transcript = app(YouTubeService::class)->getTranscript($this->data['youtube_url']);
+            return $this->groupTextByTimeIntervals($transcript);
         } elseif (isset($this->data['file_path'])) {
-            return app(AudioService::class)->audioToText($this->data['file_path']);
+            $text = app(AudioService::class)->audioToText($this->data['file_path']);
+            return $this->splitTextByTimeSegments($text);
         }
 
         throw new \Exception('Unsupported media type');
     }
+
+    protected function groupTextByTimeIntervals(array $transcript, int $interval = 180): array
+    {
+        $segments = [];
+        $currentSegment = '';
+        $startTime = 0;
+
+        foreach ($transcript as $node) {
+            $time = $this->convertTimeToSeconds($node['time']);
+            if ($time - $startTime >= $interval) {
+                if ($currentSegment) {
+                    $segments[] = [
+                        'time' => gmdate("H:i:s", $startTime) . '-' . gmdate("H:i:s", $startTime + $interval),
+                        'text' => $currentSegment,
+                    ];
+                    Log::info('Created segment', [
+                        'time' => gmdate("H:i:s", $startTime) . '-' . gmdate("H:i:s", $startTime + $interval),
+                        'text' => $currentSegment,
+                    ]);
+                }
+                $currentSegment = '';
+                $startTime = $time;
+            }
+            $currentSegment .= ' ' . $node['text'];
+        }
+
+        if ($currentSegment) {
+            $segments[] = [
+                'time' => gmdate("H:i:s", $startTime) . '-' . gmdate("H:i:s", $startTime + $interval),
+                'text' => $currentSegment,
+            ];
+            Log::info('Created segment', [
+                'time' => gmdate("H:i:s", $startTime) . '-' . gmdate("H:i:s", $startTime + $interval),
+                'text' => $currentSegment,
+            ]);
+        }
+
+        return $segments;
+    }
+
+    protected function convertTimeToSeconds(string $time): int
+    {
+        $parts = explode('.', $time);
+        $seconds = (int)$parts[0];
+        return $seconds;
+    }
+
+    protected function splitTextByTimeSegments(string $text): array
+    {
+        // Example implementation: split text into fixed 3-minute segments.
+        // This should be adapted based on your specific requirements.
+
+        $segments = [];
+        $lines = explode("\n", $text);
+        $currentSegment = '';
+        $currentTime = 0;
+        $segmentDuration = 180; // 3 minutes in seconds
+
+        foreach ($lines as $line) {
+            $currentSegment += $line . ' ';
+            if (strlen($currentSegment) > 200) { // Adjust the length as needed
+                $segments[] = [
+                    'time' => gmdate("H:i:s", $currentTime) . '-' . gmdate("H:i:s", $currentTime + $segmentDuration),
+                    'text' => $currentSegment,
+                ];
+                Log::info('Created segment', [
+                    'time' => gmdate("H:i:s", $currentTime) . '-' . gmdate("H:i:s", $currentTime + $segmentDuration),
+                    'text' => $currentSegment,
+                ]);
+                $currentSegment = '';
+                $currentTime += $segmentDuration;
+            }
+        }
+
+        // Add the last segment
+        if ($currentSegment !== '') {
+            $segments[] = [
+                'time' => gmdate("H:i:s", $currentTime) . '-' . gmdate("H:i:s", $currentTime + $segmentDuration),
+                'text' => $currentSegment,
+            ];
+            Log::info('Created segment', [
+                'time' => gmdate("H:i:s", $currentTime) . '-' . gmdate("H:i:s", $currentTime + $segmentDuration),
+                'text' => $currentSegment,
+            ]);
+        }
+
+        return $segments;
+    }
 }
+?>

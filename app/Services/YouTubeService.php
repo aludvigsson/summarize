@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Exception;
 use GuzzleHttp\Client;
+use Illuminate\Support\Facades\Log;
 
 class YouTubeService
 {
@@ -42,15 +43,16 @@ class YouTubeService
         $this->languageCode = $languageCode;
     }
 
-    public function getTranscript(string $videoUrl): string
+    public function getTranscript(string $videoUrl): array
     {
+        Log::info('Fetching transcript', ['url' => $videoUrl]);
         $captionUrl = $this->getCaptionsBaseUrl($videoUrl);
         if (empty($captionUrl)) {
             throw new Exception('Captions not available for this video.');
         }
 
         $subtitles = $this->getSubtitles($captionUrl);
-        return implode(' ', $subtitles);
+        return $subtitles;
     }
 
     protected function getCaptionsBaseUrl(string $videoUrl): ?string
@@ -99,10 +101,17 @@ class YouTubeService
         if ($xmlObject) {
             $textNodes = $xmlObject->xpath('//text');
             foreach ($textNodes as $textNode) {
-                $result[] = (string) $textNode;
+                $result[] = [
+                    'time' => (string)$textNode['start'],
+                    'text' => (string)$textNode,
+                ];
+                Log::info('Parsed text node', [
+                    'time' => (string)$textNode['start'],
+                    'text' => (string)$textNode,
+                ]);
             }
         }
         return $result;
     }
 }
-?>
+
