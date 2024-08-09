@@ -5,9 +5,11 @@ namespace App\Livewire;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use App\Services\MediaService;
+use App\Models\Summary;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Validate;
+use Illuminate\Support\Str;
 
 class MediaSummarizer extends Component
 {
@@ -34,29 +36,36 @@ class MediaSummarizer extends Component
         $this->error = '';
 
         try {
+            // Create a new Summary record with a unique ID
+            $this->summaryId = (string) Str::uuid();
+            $summary = Summary::create([
+                'id' => $this->summaryId,
+                'is_completed' => false,
+                'summary' => null,
+                'original_content' => null,
+            ]);
+
             if ($this->youtubeUrl) {
                 Log::info('Processing YouTube URL: ' . $this->youtubeUrl);
-                $result = $mediaService->processMedia(['youtube_url' => $this->youtubeUrl]);
+                $mediaService->processMedia($this->summaryId, ['youtube_url' => $this->youtubeUrl]);
             } elseif ($this->file) {
                 Log::info('Processing uploaded file');
                 $path = $this->file->store('uploads');
-                $result = $mediaService->processMedia(['file_path' => $path]);
+                $mediaService->processMedia($this->summaryId, ['file_path' => $path]);
             } else {
                 throw new Exception('No YouTube URL or file provided');
             }
 
-            $this->summaryId = $result['id'];
             Log::info('Summary ID generated: ' . $this->summaryId);
             $this->dispatch('summarizationStarted', $this->summaryId);
         } catch (Exception $e) {
             Log::error('Error in summarize method: ' . $e->getMessage());
             $this->error = 'An error occurred while processing your media: ' . $e->getMessage();
+            if ($this->summaryId) {
+                Summary::where('id', $this->summaryId)->update(['error' => $this->error]);
+            }
         } finally {
             $this->isLoading = false;
-        }
-
-        if (!$this->error) {
-            return redirect()->to('/summary/' . $this->summaryId);
         }
     }
 

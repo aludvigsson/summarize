@@ -17,60 +17,68 @@ class ProcessMedia implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $id;
+    protected $summaryId;
     protected $data;
 
-    public function __construct(string $id, array $data)
+    public function __construct(string $summaryId, array $data)
     {
-        $this->id = $id;
+        $this->summaryId = $summaryId;
         $this->data = $data;
     }
 
-    public function handle(AISummarizerService $aiSummarizer)
+    public function handle(AISummarizerService $aiSummarizer, AudioService $audioService)
     {
-        Log::info('ProcessMedia job started', ['id' => $this->id]);
+        Log::info('ProcessMedia job started', ['id' => $this->summaryId]);
 
         try {
-            $segments = $this->extractText();
+            $segments = $this->extractText($audioService);
             $summaries = [];
+            $videoTitle = isset($this->data['youtube_url']) ? $this->getYouTubeTitle() : null;
 
             foreach ($segments as $segment) {
                 Log::info('Processing segment', ['time' => $segment['time']]);
                 $summaries[] = [
                     'time' => $segment['time'],
-                    'summary' => $aiSummarizer->summarize($segment['text']),
+                    'summary' => $aiSummarizer->summarize($segment['text'], $videoTitle, $segment['time']),
                 ];
             }
 
-            Summary::create([
-                'id' => $this->id,
+            Summary::where('id', $this->summaryId)->update([
                 'summary' => json_encode($summaries),
                 'original_content' => $this->data,
+                'is_completed' => true,
             ]);
 
-            Log::info('ProcessMedia job completed successfully', ['id' => $this->id]);
+            Log::info('ProcessMedia job completed successfully', ['id' => $this->summaryId]);
         } catch (\Exception $e) {
             Log::error('Error in ProcessMedia job', [
-                'id' => $this->id,
+                'id' => $this->summaryId,
                 'error' => $e->getMessage()
             ]);
 
-            // Optionally, you can rethrow the exception if you want the job to be retried
-            // throw $e;
+            Summary::where('id', $this->summaryId)->update([
+                'error' => $e->getMessage(),
+                'is_completed' => true,
+            ]);
         }
     }
 
-    protected function extractText(): array
+    protected function extractText(AudioService $audioService): array
     {
         if (isset($this->data['youtube_url'])) {
             $transcript = app(YouTubeService::class)->getTranscript($this->data['youtube_url']);
             return $this->groupTextByTimeIntervals($transcript);
         } elseif (isset($this->data['file_path'])) {
-            $text = app(AudioService::class)->audioToText($this->data['file_path']);
+            $text = $audioService->audioToText($this->data['file_path']);
             return $this->splitTextByTimeSegments($text);
         }
 
         throw new \Exception('Unsupported media type');
+    }
+
+    protected function getYouTubeTitle(): string
+    {
+        return app(YouTubeService::class)->getVideoTitle($this->data['youtube_url']);
     }
 
     protected function groupTextByTimeIntervals(array $transcript, int $interval = 180): array
@@ -121,9 +129,6 @@ class ProcessMedia implements ShouldQueue
 
     protected function splitTextByTimeSegments(string $text): array
     {
-        // Example implementation: split text into fixed 3-minute segments.
-        // This should be adapted based on your specific requirements.
-
         $segments = [];
         $lines = explode("\n", $text);
         $currentSegment = '';
@@ -131,15 +136,15 @@ class ProcessMedia implements ShouldQueue
         $segmentDuration = 180; // 3 minutes in seconds
 
         foreach ($lines as $line) {
-            $currentSegment += $line . ' ';
+            $currentSegment .= $line . ' '; // Changed from += to .=
             if (strlen($currentSegment) > 200) { // Adjust the length as needed
                 $segments[] = [
                     'time' => gmdate("H:i:s", $currentTime) . '-' . gmdate("H:i:s", $currentTime + $segmentDuration),
-                    'text' => $currentSegment,
+                    'text' => trim($currentSegment),
                 ];
                 Log::info('Created segment', [
                     'time' => gmdate("H:i:s", $currentTime) . '-' . gmdate("H:i:s", $currentTime + $segmentDuration),
-                    'text' => $currentSegment,
+                    'text' => trim($currentSegment),
                 ]);
                 $currentSegment = '';
                 $currentTime += $segmentDuration;
@@ -150,15 +155,14 @@ class ProcessMedia implements ShouldQueue
         if ($currentSegment !== '') {
             $segments[] = [
                 'time' => gmdate("H:i:s", $currentTime) . '-' . gmdate("H:i:s", $currentTime + $segmentDuration),
-                'text' => $currentSegment,
+                'text' => trim($currentSegment),
             ];
             Log::info('Created segment', [
                 'time' => gmdate("H:i:s", $currentTime) . '-' . gmdate("H:i:s", $currentTime + $segmentDuration),
-                'text' => $currentSegment,
+                'text' => trim($currentSegment),
             ]);
         }
 
         return $segments;
     }
 }
-?>

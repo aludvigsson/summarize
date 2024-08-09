@@ -16,6 +16,52 @@
                     <span class="text-2xl font-bold text-indigo-600">MediaSummarizer</span>
                 </div>
             </div>
+            <div class="hidden sm:ml-6 sm:flex sm:space-x-8 items-center">
+                <!-- Navigation Links -->
+                @guest
+                    <a href="{{ route('login') }}" class="text-gray-900 hover:text-indigo-600">Login</a>
+                    <a href="{{ route('register') }}" class="text-gray-900 hover:text-indigo-600">Register</a>
+                @else
+                    <a href="{{ route('dashboard') }}" class="text-gray-900 hover:text-indigo-600">Dashboard</a>
+
+                    <!-- User Settings Dropdown -->
+                    <div class="relative">
+                        <x-dropdown align="right" width="48">
+                            <x-slot name="trigger">
+                                <button class="flex items-center text-sm font-medium text-gray-900 hover:text-indigo-600 focus:outline-none focus:border-indigo-300 transition duration-150 ease-in-out">
+                                    <div>{{ Auth::user()->name }}</div>
+
+                                    <div class="ml-1">
+                                        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M5.293 9.293A1 1 0 016 9h8a1 1 0 01.707 1.707l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                        </svg>
+                                    </div>
+                                </button>
+                            </x-slot>
+
+                            <x-slot name="content">
+                                <!-- Account Management -->
+                                <x-dropdown-link href="{{ route('profile.show') }}">
+                                    {{ __('Profile') }}
+                                </x-dropdown-link>
+
+                                <div class="border-t border-gray-100"></div>
+
+                                <!-- Authentication -->
+                                <form method="POST" action="{{ route('logout') }}">
+                                    @csrf
+
+                                    <x-dropdown-link href="{{ route('logout') }}"
+                                                     onclick="event.preventDefault();
+                                                this.closest('form').submit();">
+                                        {{ __('Log Out') }}
+                                    </x-dropdown-link>
+                                </form>
+                            </x-slot>
+                        </x-dropdown>
+                    </div>
+                @endauth
+            </div>
         </div>
     </div>
 </nav>

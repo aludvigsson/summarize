@@ -113,5 +113,27 @@ class YouTubeService
         }
         return $result;
     }
+
+    public function getVideoTitle(string $videoUrl): string
+    {
+        Log::info('Fetching video title', ['url' => $videoUrl]);
+        $response = $this->client->get($videoUrl);
+
+        if ($response->getStatusCode() !== 200) {
+            throw new Exception("Failed to get video page: " . $response->getStatusCode());
+        }
+
+        $html = $response->getBody()->getContents();
+        preg_match('/<title>(.*?)<\/title>/', $html, $matches);
+
+        if (empty($matches[1])) {
+            throw new Exception("Video title not found");
+        }
+
+        $title = html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5);
+        $title = str_replace(' - YouTube', '', $title);
+
+        return trim($title);
+    }
 }
 

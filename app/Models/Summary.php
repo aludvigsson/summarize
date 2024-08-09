@@ -18,6 +18,8 @@ class Summary extends Model
         'id',
         'summary',
         'original_content',
+        'is_completed',
+        'error',
     ];
 
     /**
@@ -27,5 +29,6 @@ class Summary extends Model
      */
     protected $casts = [
         'original_content' => 'array',
+        'is_completed' => 'boolean',
     ];
 }
